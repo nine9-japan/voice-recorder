@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シンプル録音アプリ</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./drive.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>ボイスレコーダー</h1>
+      <p class="app-subtitle">ブラウザで手軽に音声を録音・再生・保存</p>
+    </header>
+
+    <main class="app-main">
+      <section class="recorder-card" aria-label="録音コントロール">
+        <div id="status-badge" class="status-badge" data-state="idle">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">待機中</span>
+        </div>
+
+        <div id="timer" class="timer" aria-live="off">00:00</div>
+
+        <div class="visualizer-wrap">
+          <canvas id="visualizer" class="visualizer" width="500" height="84" aria-hidden="true"></canvas>
+        </div>
+
+        <div class="controls">
+          <button
+            id="record-btn"
+            type="button"
+            class="btn btn-record"
+            aria-label="録音開始"
+            data-recording="false"
+          >
+            <svg
+              id="record-btn-icon"
+              class="record-btn-icon"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              aria-hidden="true"
+            >
+              <circle class="icon-record-dot" cx="12" cy="12" r="7" fill="currentColor" />
+              <rect class="icon-stop-square" x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+            </svg>
+            <span id="record-btn-label">録音開始</span>
+          </button>
+
+          <button id="pause-btn" type="button" class="btn btn-secondary" hidden disabled>
+            <span id="pause-btn-label">一時停止</span>
+          </button>
+        </div>
+
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      </section>
+
+      <section class="drive-card" aria-label="Google Drive 自動アップロード">
+        <div class="drive-header">
+          <label class="toggle-control" for="drive-auto-upload-toggle">
+            <input id="drive-auto-upload-toggle" type="checkbox" role="switch" class="toggle-input">
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Google Drive 自動アップロード</span>
+          </label>
+          <div class="drive-header-actions">
+            <span id="drive-status-badge" class="drive-status-badge" data-status="off">OFF</span>
+            <button
+              id="drive-settings-toggle"
+              type="button"
+              class="btn btn-small btn-secondary"
+              aria-expanded="false"
+              aria-controls="drive-settings-panel"
+            >
+              設定
+            </button>
+          </div>
+        </div>
+
+        <div class="drive-summary">
+          <span>
+            保存先:
+            <a
+              id="drive-folder-link"
+              class="drive-folder-link"
+              href="https://drive.google.com/drive/folders/1dWUZTYz1n64cyUvk93t3hpqfjaNtuAh9"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google Drive フォルダを開く ↗
+            </a>
+          </span>
+          <span id="drive-hint-text" class="drive-hint-text">自動アップロードは無効です</span>
+        </div>
+
+        <div id="drive-settings-panel" class="drive-settings-panel" hidden>
+          <div class="form-group">
+            <label class="form-label" for="drive-mode-select">接続方式</label>
+            <select id="drive-mode-select" class="form-control">
+              <option value="gas">Google Apps Script 経由（GCP不要・おすすめ）</option>
+              <option value="oauth">Google OAuth 2.0 直接接続（Drive API v3）</option>
+            </select>
+          </div>
+
+          <div id="drive-gas-fields" class="drive-mode-fields">
+            <div class="form-group">
+              <label class="form-label" for="drive-gas-url">GAS ウェブアプリ URL</label>
+              <input
+                id="drive-gas-url"
+                type="url"
+                class="form-control"
+                placeholder="https://script.google.com/macros/s/.../exec"
+                autocomplete="off"
+              >
+              <p class="form-help">
+                同梱の <code>gas/Code.gs</code> を Google Apps Script に貼り付けて「ウェブアプリ」としてデプロイした URL を入力します（手順は <code>README.md</code> を参照）。
+              </p>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="drive-gas-token">共有トークン（任意）</label>
+              <input
+                id="drive-gas-token"
+                type="password"
+                class="form-control"
+                placeholder="Code.gs でトークンを設定した場合のみ入力"
+                autocomplete="off"
+              >
+            </div>
+          </div>
+
+          <div id="drive-oauth-fields" class="drive-mode-fields" hidden>
+            <div class="form-group">
+              <label class="form-label" for="drive-oauth-client-id">Google OAuth クライアント ID</label>
+              <input
+                id="drive-oauth-client-id"
+                type="text"
+                class="form-control"
+                placeholder="xxxx.apps.googleusercontent.com"
+                autocomplete="off"
+              >
+              <p class="form-help">
+                Google Cloud Console で Drive API を有効化し、承認済みの JavaScript 生成元に現在のオリジン（例: <code>http://localhost:8000</code>）を追加してください。
+              </p>
+            </div>
+            <div class="form-inline-row">
+              <button id="drive-oauth-connect-btn" type="button" class="btn btn-small btn-primary">
+                Google に接続
+              </button>
+              <button id="drive-oauth-disconnect-btn" type="button" class="btn btn-small btn-secondary" hidden>
+                切断
+              </button>
+              <span id="drive-oauth-status" class="drive-oauth-status" data-connected="false">未接続</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="drive-folder-input">保存先フォルダ URL または ID</label>
+            <div class="form-inline-row">
+              <input
+                id="drive-folder-input"
+                type="text"
+                class="form-control"
+                value="1dWUZTYz1n64cyUvk93t3hpqfjaNtuAh9"
+                autocomplete="off"
+              >
+              <button id="drive-folder-reset-btn" type="button" class="btn btn-small btn-secondary">
+                既定フォルダに戻す
+              </button>
+            </div>
+          </div>
+
+          <div id="drive-settings-message" class="drive-settings-message" role="status" hidden></div>
+        </div>
+      </section>
+
+      <section class="recordings-section" aria-label="録音一覧">
+        <div class="recordings-header">
+          <h2>録音一覧</h2>
+          <span id="recording-count" class="count-badge">0</span>
+        </div>
+
+        <p id="empty-state" class="empty-state">
+          まだ録音がありません。「録音開始」を押して始めましょう。
+        </p>
+
+        <ul id="recordings-list" class="recordings-list"></ul>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>録音データはこのブラウザ内にのみ保存され、Google Drive 自動アップロードが有効または手動送信された場合のみ指定フォルダへ送信されます。</p>
+    </footer>
+  </div>
+</body>
+</html>
