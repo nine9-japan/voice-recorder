@@ -34,17 +34,8 @@
   const driveFolderLink = document.getElementById('drive-folder-link');
   const driveHintText = document.getElementById('drive-hint-text');
   const driveSettingsPanel = document.getElementById('drive-settings-panel');
-  const driveModeSelect = document.getElementById('drive-mode-select');
-  const driveGasFields = document.getElementById('drive-gas-fields');
-  const driveOauthFields = document.getElementById('drive-oauth-fields');
   const driveGasUrlInput = document.getElementById('drive-gas-url');
-  const driveGasTokenInput = document.getElementById('drive-gas-token');
-  const driveOauthClientIdInput = document.getElementById('drive-oauth-client-id');
-  const driveOauthConnectBtn = document.getElementById('drive-oauth-connect-btn');
-  const driveOauthDisconnectBtn = document.getElementById('drive-oauth-disconnect-btn');
-  const driveOauthStatus = document.getElementById('drive-oauth-status');
-  const driveFolderInput = document.getElementById('drive-folder-input');
-  const driveFolderResetBtn = document.getElementById('drive-folder-reset-btn');
+  const driveGasDoneBtn = document.getElementById('drive-gas-done-btn');
   const driveSettingsMessage = document.getElementById('drive-settings-message');
 
   // Application state: 'idle' | 'starting' | 'recording' | 'paused' | 'stopping'
@@ -546,32 +537,19 @@
 
   function updateDriveUI() {
     driveAutoUploadToggle.checked = Boolean(driveSettings.enabled);
-    driveModeSelect.value = driveSettings.mode;
 
-    const isOAuth = driveSettings.mode === 'oauth';
-    driveGasFields.hidden = isOAuth;
-    driveOauthFields.hidden = !isOAuth;
-
-    if (document.activeElement !== driveGasUrlInput) {
-      driveGasUrlInput.value = driveSettings.gasUrl || '';
-    }
-    if (document.activeElement !== driveGasTokenInput) {
-      driveGasTokenInput.value = driveSettings.gasToken || '';
-    }
-    if (document.activeElement !== driveOauthClientIdInput) {
-      driveOauthClientIdInput.value = driveSettings.oauthClientId || '';
-    }
-    if (document.activeElement !== driveFolderInput) {
-      driveFolderInput.value = driveSettings.folderId || DriveUploader.DEFAULT_FOLDER_ID;
+    const isFixed = DriveUploader.isGasUrlFixed();
+    driveSettingsToggle.hidden = isFixed;
+    if (isFixed) {
+      setDrivePanelOpen(false);
+    } else {
+      if (document.activeElement !== driveGasUrlInput) {
+        driveGasUrlInput.value = driveSettings.gasUrl || '';
+      }
+      driveSettingsToggle.textContent = DriveUploader.isSafeHttpsUrl(driveSettings.gasUrl) ? 'URL変更' : 'URL設定';
     }
 
-    driveFolderLink.href = DriveUploader.getFolderUrl(driveSettings.folderId);
-
-    const isConnected = DriveUploader.hasValidOAuthToken();
-    driveOauthStatus.textContent = isConnected ? '接続済み' : '未接続';
-    driveOauthStatus.dataset.connected = isConnected ? 'true' : 'false';
-    driveOauthConnectBtn.textContent = isConnected ? '再接続' : 'Google に接続';
-    driveOauthDisconnectBtn.hidden = !isConnected;
+    driveFolderLink.href = DriveUploader.getFolderUrl();
 
     const readiness = DriveUploader.getReadiness(driveSettings);
     if (activeUploadsCount > 0) {
@@ -599,21 +577,23 @@
 
       if (driveSettings.enabled) {
         const check = DriveUploader.canUploadNow(driveSettings);
-        if (!check.ok) {
+        if (!check.ok && !DriveUploader.isGasUrlFixed()) {
           setDrivePanelOpen(true);
           showDriveMessage(check.message, false);
+          driveGasUrlInput.focus();
         }
       }
     });
 
     driveSettingsToggle.addEventListener('click', () => {
-      setDrivePanelOpen(driveSettingsPanel.hidden);
-    });
-
-    driveModeSelect.addEventListener('change', () => {
-      driveSettings = DriveUploader.saveSettings({ mode: driveModeSelect.value });
-      hideDriveMessage();
-      updateDriveUI();
+      if (DriveUploader.isGasUrlFixed()) {
+        return;
+      }
+      const shouldOpen = driveSettingsPanel.hidden;
+      setDrivePanelOpen(shouldOpen);
+      if (shouldOpen) {
+        driveGasUrlInput.focus();
+      }
     });
 
     const handleGasUrlUpdate = () => {
@@ -624,69 +604,25 @@
     driveGasUrlInput.addEventListener('input', handleGasUrlUpdate);
     driveGasUrlInput.addEventListener('change', handleGasUrlUpdate);
 
-    const handleGasTokenUpdate = () => {
-      driveSettings = DriveUploader.saveSettings({ gasToken: driveGasTokenInput.value });
+    const commitGasUrlAndClose = () => {
+      const url = driveGasUrlInput.value.trim();
+      driveSettings = DriveUploader.saveSettings({ gasUrl: url });
       updateDriveUI();
-    };
-    driveGasTokenInput.addEventListener('input', handleGasTokenUpdate);
-    driveGasTokenInput.addEventListener('change', handleGasTokenUpdate);
-
-    const handleClientIdUpdate = () => {
-      driveSettings = DriveUploader.saveSettings({ oauthClientId: driveOauthClientIdInput.value.trim() });
-      hideDriveMessage();
-      updateDriveUI();
-    };
-    driveOauthClientIdInput.addEventListener('input', handleClientIdUpdate);
-    driveOauthClientIdInput.addEventListener('change', handleClientIdUpdate);
-
-    const commitFolderInput = () => {
-      const extracted = DriveUploader.extractDriveFolderId(driveFolderInput.value);
-      if (!extracted) {
-        showDriveMessage('有効な Google Drive フォルダ URL または ID を入力してください。', true);
+      if (!DriveUploader.isSafeHttpsUrl(url)) {
+        showDriveMessage('有効な GAS ウェブアプリ URL（https://...）を入力してください。', true);
+        driveGasUrlInput.focus();
         return;
       }
       hideDriveMessage();
-      driveSettings = DriveUploader.saveSettings({ folderId: extracted });
-      driveFolderInput.value = extracted;
-      updateDriveUI();
+      setDrivePanelOpen(false);
     };
-    driveFolderInput.addEventListener('change', commitFolderInput);
-    driveFolderInput.addEventListener('blur', commitFolderInput);
 
-    driveFolderResetBtn.addEventListener('click', () => {
-      driveSettings = DriveUploader.saveSettings({ folderId: DriveUploader.DEFAULT_FOLDER_ID });
-      driveFolderInput.value = DriveUploader.DEFAULT_FOLDER_ID;
-      hideDriveMessage();
-      updateDriveUI();
-    });
-
-    driveOauthConnectBtn.addEventListener('click', async () => {
-      const clientId = driveOauthClientIdInput.value.trim();
-      if (!clientId) {
-        showDriveMessage('Google OAuth クライアント ID を入力してください。', true);
-        driveOauthClientIdInput.focus();
-        return;
+    driveGasDoneBtn.addEventListener('click', commitGasUrlAndClose);
+    driveGasUrlInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitGasUrlAndClose();
       }
-
-      driveSettings = DriveUploader.saveSettings({ oauthClientId: clientId });
-      driveOauthConnectBtn.disabled = true;
-      showDriveMessage('Google アカウントに接続しています...', false);
-
-      try {
-        await DriveUploader.connectOAuth(clientId);
-        showDriveMessage('Google アカウントに接続しました。', false);
-      } catch (err) {
-        showDriveMessage(err && err.message ? err.message : 'Google 接続に失敗しました。', true);
-      } finally {
-        driveOauthConnectBtn.disabled = false;
-        updateDriveUI();
-      }
-    });
-
-    driveOauthDisconnectBtn.addEventListener('click', () => {
-      DriveUploader.disconnectOAuth();
-      showDriveMessage('Google アカウントから切断しました。', false);
-      updateDriveUI();
     });
   }
 
@@ -738,35 +674,16 @@
       return;
     }
 
-    let check = DriveUploader.canUploadNow(driveSettings);
-    if (
-      !check.ok &&
-      triggeredManually &&
-      driveSettings.mode === 'oauth' &&
-      check.reasonCode === 'needs_login' &&
-      driveSettings.oauthClientId
-    ) {
-      try {
-        await DriveUploader.connectOAuth(driveSettings.oauthClientId);
-        updateDriveUI();
-        check = DriveUploader.canUploadNow(driveSettings);
-      } catch (err) {
-        check = {
-          ok: false,
-          reasonCode: 'needs_login',
-          message: err && err.message ? err.message : 'Google 接続に失敗しました。',
-        };
-      }
-    }
-
+    const check = DriveUploader.canUploadNow(driveSettings);
     if (!check.ok) {
       record.driveStatus = 'error';
       record.driveError = check.message;
       updateRecordingDriveRow(record);
       await putRecordingInDb(record);
-      if (triggeredManually) {
+      if (triggeredManually && !DriveUploader.isGasUrlFixed()) {
         setDrivePanelOpen(true);
         showDriveMessage(check.message, true);
+        driveGasUrlInput.focus();
       }
       return;
     }

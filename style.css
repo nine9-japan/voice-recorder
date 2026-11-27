@@ -482,17 +482,13 @@ body {
   gap: 0.85rem;
 }
 
+.btn[hidden],
 .drive-settings-panel[hidden],
-.drive-mode-fields[hidden],
 .drive-settings-message[hidden],
-.recording-drive-status[hidden] {
+.recording-drive-status[hidden],
+.error-banner[hidden],
+.empty-state[hidden] {
   display: none;
-}
-
-.drive-mode-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
 }
 
 .form-group {
@@ -543,16 +539,6 @@ body {
 .form-inline-row .form-control {
   flex: 1;
   min-width: 180px;
-}
-
-.drive-oauth-status {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.drive-oauth-status[data-connected="true"] {
-  color: var(--success-text);
 }
 
 .drive-settings-message {
